@@ -1,6 +1,6 @@
 # AutoEUServerless
 
-AutoEUServerless 是一个基于腾讯云函数 Serverless 架构的自动化工具，用于自动续期 EUserv 免费 IPv6 VPS。项目目的是简化续期过程，避免因遗忘续期而导致服务中断。
+AutoEUServerless 是一个基于腾讯云函数 Serverless 架构的自动化工具，用于自动续期 EUserv 免费 IPv6 VPS和存储。项目目的是简化续期过程，避免因遗忘续期而导致服务中断。
 
 ## 功能
 - **腾讯云函数和AWS工作流**：无服务器化部署。
@@ -9,6 +9,8 @@ AutoEUServerless 是一个基于腾讯云函数 Serverless 架构的自动化工
 - **自动获取PIN码**：支持通过转发规则解析获取邮箱PIN码。
 - **验证码识别**：自动识别登录过程中的验证码。
 - **Telegram 通知**：通过 Telegram Bot 发送续期状态通知。
+- **2FA双因子认证**：支持TOTP验证器应用进行安全登录。![NEW](https://img.shields.io/badge/NEW-red?style=flat-square)
+- **自动续期存储**：在原续期VPS的基础上，支持了存储的续期。![NEW](https://img.shields.io/badge/NEW-red?style=flat-square)
 
 ## 使用说明
 大家都应该有一只德鸡,即乌龟壳之后唯一的一个永久免费VPS。  
@@ -81,11 +83,13 @@ Fork一个到自己的仓库然后点个Star⭐️ 改一下仓库的Action Secr
 5.  填写这一部分  *
     ![Step4](image/step4.png)  
     - TelegramBOT相关如何获取请搜索Youtube
-    - **此时如果你还不知道如何填写Mailparser部分,暂时留空,下面有教学*
+    - **此时如果你还不知道如何填写Mailparser部分,暂时留空,下面有教学**
+    - **增加了 `EUSERV_2FA_SECRET` 配置项，记得填写**![NEW](https://img.shields.io/badge/NEW-red?style=flat-square)
 
-6.  **在EUserV中关闭登录二次验证!**  
+6.  **在EUserV中`开启`登录二次验证!** ![NEW](https://img.shields.io/badge/NEW-red?style=flat-square)
     ![Step6](image/step6.png)  
-    - 进入EuserV的管理面板,点击[**Settings**] -> 勾选 [**Deactivated (insecure)**] -> 点击[**Save**]
+    ![Step6_2](image/step6_2.png)
+    - 进入EuserV的管理面板,点击[**Settings**] -> 勾选 [**Authenticator App (maximum secutiry,recommeded)**] -> 保存key -> 用认证器扫二维码 -> 点击[**Save**]
 
 7.  配置函数的运行函数
     ![Step7](image/step7.png)

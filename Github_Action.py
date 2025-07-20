@@ -14,11 +14,16 @@ import json
 import time
 import base64
 import requests
+import hmac
+import struct
 from bs4 import BeautifulSoup
 
 # 账户信息：用户名和密码
 USERNAME = os.getenv('EUSERV_USERNAME')  # 填写用户名或邮箱
 PASSWORD = os.getenv('EUSERV_PASSWORD')  # 填写密码
+
+# 2FA机密Key
+EUSERV_2FA_SECRET = os.getenv('EUSERV_2FA_SECRET')
 
 # TrueCaptcha API 配置
 TRUECAPTCHA_USERID = os.getenv('TRUECAPTCHA_USERID')
@@ -69,6 +74,7 @@ def log(info: str):
         "[MailParser]": "📧",
         "[Captcha Solver]": "🧩",
         "[AutoEUServerless]": "🌐",
+        "[2FA]": "🔐",
     }
     # 对每个关键字进行检查，并在找到时添加 emoji
     for key, emoji in emoji_map.items():
@@ -106,6 +112,21 @@ def login_retry(*args, **kwargs):
                 return ret, ret_session
         return inner
     return wrapper
+
+# 基于计数器的一次性密码
+def hotp(key, counter, digits=6, digest='sha1'):
+    """生成 HOTP 验证码"""
+    key = base64.b32decode(key.upper() + '=' * ((8 - len(key)) % 8))
+    counter = struct.pack('>Q', counter)
+    mac = hmac.new(key, counter, digest).digest()
+    offset = mac[-1] & 0x0f
+    binary = struct.unpack('>L', mac[offset:offset+4])[0] & 0x7fffffff
+    return str(binary)[-digits:].zfill(digits)
+
+# 基于时间戳的一次性密码
+def totp(key, time_step=30, digits=6, digest='sha1'):
+    """生成 TOTP 验证码"""
+    return hotp(key, int(time.time() / time_step), digits, digest)
 
 # 验证码解决器
 def captcha_solver(captcha_image_url: str, session: requests.session) -> dict:
@@ -212,9 +233,7 @@ def login(username: str, password: str) -> (str, requests.session):
     f.raise_for_status()
 
     if "Hello" not in f.text and "Confirm or change your customer data here" not in f.text:
-        if "To finish the login process please solve the following captcha." not in f.text:
-            return "-1", session
-        else:
+        if "To finish the login process please solve the following captcha." in f.text:
             log("[Captcha Solver] 正在进行验证码识别...")
             solved_result = captcha_solver(captcha_image_url, session)
             captcha_code = handle_captcha_solved_result(solved_result)
@@ -237,10 +256,40 @@ def login(username: str, password: str) -> (str, requests.session):
             )
             if "To finish the login process please solve the following captcha." not in f2.text:
                 log("[Captcha Solver] 验证通过")
-                return sess_id, session
+                # 验证码通过后，检查是否登录成功或需要2FA
+                if "Hello" in f2.text or "Confirm or change your customer data here" in f2.text:
+                    return sess_id, session
+                f = f2  # 继续检查2FA
             else:
                 log("[Captcha Solver] 验证失败")
                 return "-1", session
+        if "To finish the login process enter the PIN that is shown in yout authenticator app." in f.text:
+            log("[2FA] 检测到需要 2FA 验证")
+            if not EUSERV_2FA_SECRET:
+                log("[2FA] 未配置 2FA 密钥，登录失败")
+                return "-1", session
+                
+            two_fa_code = totp(EUSERV_2FA_SECRET)
+            log("[2FA] 生成的验证码: {}".format(two_fa_code))
+            
+            f2 = session.post(
+                url,
+                headers=headers,
+                data={
+                    "subaction": "login",
+                    "sess_id": sess_id,
+                    "pin": two_fa_code,
+                },
+            )
+            
+            if "To finish the login process enter the PIN that is shown in yout authenticator app." not in f2.text:
+                log("[2FA] 2FA 验证通过")
+                return sess_id, session
+            else:
+                log("[2FA] 2FA 验证失败")
+                return "-1", session
+        else:
+            return "-1", session            
     else:
         return sess_id, session
 
@@ -254,7 +303,7 @@ def get_servers(sess_id: str, session: requests.session) -> {}:
     f.raise_for_status()
     soup = BeautifulSoup(f.text, "html.parser")
     for tr in soup.select(
-        "#kc2_order_customer_orders_tab_content_1 .kc2_order_table.kc2_content_table tr"
+        "#kc2_order_customer_orders_tab_content_1 .kc2_order_table.kc2_content_table tr,#kc2_order_customer_orders_tab_content_2 .kc2_order_table.kc2_content_table tr.kc2_order_upcoming_todo_row"
     ):
         server_id = tr.select(".td-z1-sp1-kc")
         if not len(server_id) == 1:
