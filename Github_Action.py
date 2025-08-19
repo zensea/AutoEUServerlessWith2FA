@@ -271,15 +271,17 @@ def login(username: str, password: str) -> (str, requests.session):
                 
             two_fa_code = totp(EUSERV_2FA_SECRET)
             log("[2FA] 生成的验证码: {}".format(two_fa_code))
+
+            # 从页面中提取 2FA 请求参数
+            soup = BeautifulSoup(f.text, "html.parser")
+            hidden_inputs = soup.find_all("input", type="hidden")
+            hidden_fields = {inp["name"]: inp.get("value", "") for inp in hidden_inputs}
+            hidden_fields["pin"] = two_fa_code
             
             f2 = session.post(
                 url,
                 headers=headers,
-                data={
-                    "subaction": "login",
-                    "sess_id": sess_id,
-                    "pin": two_fa_code,
-                },
+                data=hidden_fields
             )
             
             if "To finish the login process enter the PIN that is shown in yout authenticator app." not in f2.text:
@@ -303,7 +305,7 @@ def get_servers(sess_id: str, session: requests.session) -> {}:
     f.raise_for_status()
     soup = BeautifulSoup(f.text, "html.parser")
     for tr in soup.select(
-        "#kc2_order_customer_orders_tab_content_1 .kc2_order_table.kc2_content_table tr,#kc2_order_customer_orders_tab_content_2 .kc2_order_table.kc2_content_table tr.kc2_order_upcoming_todo_row"
+        "#kc2_order_customer_orders_tab_content_1 .kc2_order_table.kc2_content_table tr.kc2_order_upcoming_todo_row,#kc2_order_customer_orders_tab_content_2 .kc2_order_table.kc2_content_table tr.kc2_order_upcoming_todo_row"
     ):
         server_id = tr.select(".td-z1-sp1-kc")
         if not len(server_id) == 1:
